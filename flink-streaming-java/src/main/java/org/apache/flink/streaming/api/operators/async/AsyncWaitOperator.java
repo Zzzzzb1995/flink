@@ -112,6 +112,9 @@ public class AsyncWaitOperator<IN, OUT>
 	/** Thread running the emitter. */
 	private transient Thread emitterThread;
 
+	/** Whether object reuse has been enabled or disabled. */
+	private transient boolean isObjectReuseEnabled;
+
 	public AsyncWaitOperator(
 			AsyncFunction<IN, OUT> asyncFunction,
 			long timeout,
@@ -162,6 +165,8 @@ public class AsyncWaitOperator<IN, OUT>
 	public void open() throws Exception {
 		super.open();
 
+		this.isObjectReuseEnabled = getExecutionConfig().isObjectReuseEnabled();
+
 		// create the emitter
 		this.emitter = new Emitter<>(checkpointingLock, output, queue, this);
 
@@ -196,7 +201,15 @@ public class AsyncWaitOperator<IN, OUT>
 	}
 
 	@Override
-	public void processElement(StreamRecord<IN> element) throws Exception {
+	public void processElement(StreamRecord<IN> record) throws Exception {
+		StreamRecord<IN> element;
+		// copy the element avoid the element is reused
+		if (isObjectReuseEnabled) {
+			//noinspection unchecked
+			element = (StreamRecord<IN>) inStreamElementSerializer.copy(record);
+		} else {
+			element = record;
+		}
 		final StreamRecordQueueEntry<OUT> streamRecordBufferEntry = new StreamRecordQueueEntry<>(element);
 
 		if (timeout > 0L) {
